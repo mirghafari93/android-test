@@ -1,41 +1,75 @@
-# Use the latest 2.1 version of CircleCI pipeline process engine. See: https://circleci.com/docs/2.0/configuration-reference
+# .circleci/config.yml
 version: 2.1
 jobs:
   build:
-    working_directory: ~/code
-    docker:
-      - image: androidsdk/android-28
-        auth:
-          username: mirghafari93 
-          password: docker1992comet
-    environment:
-      JVM_OPTS: -Xmx3200m
+    machine:
+      image: android:202102-01
+    # To optimize build times, we recommend "large" and above for Android-related jobs
+    resource_class: large
     steps:
       - checkout
+      - run:
+          name: Create avd
+          command: |
+            SYSTEM_IMAGES="system-images;android-29;default;x86"
+            sdkmanager "$SYSTEM_IMAGES"
+            echo "no" | avdmanager --verbose create avd -n test -k "$SYSTEM_IMAGES"
+      - run:
+          name: Launch emulator
+          command: |
+            emulator -avd test -delay-adb -verbose -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim
+          background: true
+      - run:
+          name: Generate cache key
+          command: |
+            find . -name 'build.gradle' | sort | xargs cat |
+            shasum | awk '{print $1}' > /tmp/gradle_cache_seed
       - restore_cache:
-          key: jars-{{ checksum "build.gradle" }}-{{ checksum  "app/build.gradle" }}
-#      - run:
-#         name: Chmod permissions #if permission for Gradlew Dependencies fail, use this.
-#         command: sudo chmod +x ./gradlew
+          key: gradle-v1-{{ arch }}-{{ checksum "/tmp/gradle_cache_seed" }}
       - run:
-          name: Download Dependencies
-          command: ./gradlew androidDependencies
-      - save_cache:
-          paths:
-            - ~/.gradle
-          key: jars-{{ checksum "build.gradle" }}-{{ checksum  "app/build.gradle" }}
+          # run in parallel with the emulator starting up, to optimize build time
+          name: Run assembleDebugAndroidTest task
+          command: |
+            ./gradlew assembleDebugAndroidTest
       - run:
-          name: Assemble APK 
-          command: ./gradlew recordDebugAndroidTestScreenshotTest
+          name: Wait for emulator to start
+          command: |
+            circle-android wait-for-boot
+      - run:
+          name: Disable emulator animations
+          command: |
+            adb shell settings put global window_animation_scale 0.0
+            adb shell settings put global transition_animation_scale 0.0
+            adb shell settings put global animator_duration_scale 0.0
+      - run:
+          name: Run UI tests (with retry)
+          command: |
+            MAX_TRIES=2
+            run_with_retry() {
+               n=1
+               until [ $n -gt $MAX_TRIES ]
+               do
+                  echo "Starting test attempt $n"
+                  ./gradlew recordDebugAndroidTestScreenshotTest && break
+                  n=$[$n+1]
+                  sleep 5
+               done
+               if [ $n -gt $MAX_TRIES ]; then
+                 echo "Max tries reached ($MAX_TRIES)"
+                 exit 1
+               fi
+            }
+            run_with_retry 
       - store_artifacts: # for display in Artifacts: https://circleci.com/docs/2.0/artifacts/ 
-          path: app/build/outputs  app/build/screenshotsDebugAndroidTest  app/build/reports/androidTests/connected/flavors/debugAndroidTest
+          path: app/build/screenshotsDebugAndroidTest  app/build/reports/androidTests/connected/flavors/debugAndroidTest
           destination: outputs
-      - store_test_results: # for display in Test Summary: https://circleci.com/docs/2.0/collect-test-data/
-          path: app/build/test-results
-      # See https://circleci.com/docs/2.0/deployment-integrations/ for deploy examples
 
-
-
-    # - ./gradlew recordDebugAndroidTestScreenshotTest
-    #   - 
-    #   - 
+      - save_cache:
+          key: gradle-v1-{{ arch }}-{{ checksum "/tmp/gradle_cache_seed" }}
+          paths:
+            - ~/.gradle/caches
+            - ~/.gradle/wrapper
+workflows:
+  build:
+    jobs:
+      - build

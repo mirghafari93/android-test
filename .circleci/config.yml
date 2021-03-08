@@ -25,10 +25,10 @@ jobs:
             - ~/.gradle
           key: jars-{{ checksum "build.gradle" }}-{{ checksum  "app/build.gradle" }}
       - run:
-          name: Run Tests
-          command: ./gradlew assembleDebug
+          name: Assemble APK 
+          command: ./gradlew recordDebugAndroidTestScreenshotTest
       - store_artifacts: # for display in Artifacts: https://circleci.com/docs/2.0/artifacts/ 
-          path: app/build/outputs
+          path: app/build/outputs  app/build/screenshotsDebugAndroidTest  app/build/reports/androidTests/connected/flavors/debugAndroidTest
           destination: outputs
       - store_test_results: # for display in Test Summary: https://circleci.com/docs/2.0/collect-test-data/
           path: app/build/test-results
@@ -37,5 +37,5 @@ jobs:
 
 
     # - ./gradlew recordDebugAndroidTestScreenshotTest
-    #   - app/build/screenshotsDebugAndroidTest
-    #   - app/build/reports/androidTests/connected/flavors/debugAndroidTest
+    #   - 
+    #   - 

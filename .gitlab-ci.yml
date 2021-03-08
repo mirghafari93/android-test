@@ -1,0 +1,127 @@
+stages:
+  - test
+  - ui-test
+  - make_sun
+  # - make_orange
+#  - release
+# - test
+
+image: openjdk:8-jdk 
+
+
+variables:
+  # ANDROID_COMPILE_SDK: "29"
+  # ANDROID_BUILD_TOOLS: "29.0.3"
+  # ANDROID_SDK_TOOLS: "6514223"
+  EMULATOR_VERSION: "24"
+  ANDROID_HOME: "/home/rubika/android2/android-home"
+
+
+
+before_script:
+  # - sudo apt-get --quiet update --yes
+  # - sudo apt-get --quiet install --yes wget tar unzip lib32stdc++6 lib32z1
+
+  # - export ANDROID_HOME="${PWD}/android-home"
+  # - install -d $ANDROID_HOME
+  # - sudo wget --output-document=$ANDROID_HOME/cmdline-tools.zip https://dl.google.com/android/repository/commandlinetools-linux-${ANDROID_SDK_TOOLS}_latest.zip
+  # - pushd $ANDROID_HOME
+  # - sudo unzip -d cmdline-tools cmdline-tools.zip
+  # - popd
+  # - export PATH=$PATH:${ANDROID_HOME}/cmdline-tools/tools/bin/
+
+  # - sdkmanager --version
+
+  # - yes | sdkmanager --sdk_root=${ANDROID_HOME} --licenses || true
+  # - sdkmanager --sdk_root=${ANDROID_HOME} "platforms;android-${ANDROID_COMPILE_SDK}"
+  # - sdkmanager --sdk_root=${ANDROID_HOME} "platform-tools"
+  # - sdkmanager --sdk_root=${ANDROID_HOME} "build-tools;${ANDROID_BUILD_TOOLS}"
+
+  - pwd
+  - chmod +x ./gradlew
+
+
+
+#lintDebug:
+#  interruptible: true
+#  stage: build
+#  script:
+#    - ./gradlew -Pci --console=plain :app:lintDebug -PbuildDir=lint
+
+
+
+# Run all tests, if any fails, interrupt the pipeline(fail it)
+debugTests:
+ interruptible: true
+ stage: test
+ script:
+   - ./gradlew -Pci --console=plain :app:testDebug
+
+androidTests:
+  interruptible: true
+  stage: ui-test
+  script:
+    - wget --quiet --output-document=android-wait-for-emulator https://raw.githubusercontent.com/travis-ci/travis-cookbooks/0f497eb71291b52a703143c5cd63a217c8766dc9/community-cookbooks/android-sdk/files/default/android-wait-for-emulator
+    - sudo chmod +x android-wait-for-emulator
+    - sudo ${ANDROID_HOME}/tools/bin/sdkmanager --update > update.log
+    - sudo ${ANDROID_HOME}/tools/bin/sdkmanager "platform-tools" "emulator" "system-images;android-${EMULATOR_VERSION};default;armeabi-v7a"  > installEmulator.log
+    # - echo no | ${ANDROID_HOME}/tools/bin/avdmanager create avd -n test -k "system-images;android-${EMULATOR_VERSION};default;armeabi-v7a"
+    # - ${ANDROID_HOME}/emulator/emulator -avd test -no-window -no-audio &
+    - ./android-wait-for-emulator
+    - adb shell input keyevent 82
+    - adb shell input tap 233 293
+    # Send keystroke Arrow Right
+    - sleep 3; adb shell input keyevent 22
+    # Send keystroke Arrow Right again
+    - sleep 3; adb shell input keyevent 22
+    # Send keystroke Enter to press a button on the dialog
+    - sleep 3; adb shell input keyevent 66
+    - adb shell am broadcast -a android.intent.action.CLOSE_SYSTEM_DIALOGS
+
+    # - ./gradlew connectedCheck
+    - ./gradlew recordDebugAndroidTestScreenshotTest
+    # - ./gradlew -Pci --console=plain :app:testDebug
+
+  artifacts:
+    paths:
+      - app/build/screenshotsDebugAndroidTest
+      - app/build/reports/androidTests/connected/flavors/debugAndroidTest
+
+
+# Make Project
+assembleSunflower:
+  interruptible: true
+  stage: make_sun
+  script:
+    - ./gradlew assembleDebug
+  artifacts:
+    paths:
+      - app/build/outputs/
+
+
+# assembleOrangeFlower:
+#   interruptible: true
+#   stage: make_orange
+#   script:
+#     - ls
+#     - cd app
+#     - ls
+#     - sudo find ./ -type f -exec sed -i 's/Sunflower/orange/g' {} \;
+#     - cd ../
+#     - ./gradlew assembleDebug
+#   artifacts:
+#     paths:
+#       - app/build/outputs/
+
+
+
+# Build release
+# assembleRelease:
+#   interruptible: true
+#   stage: release
+#   script:
+#     - ./gradlew assembleDebug assembleRelease
+#     # - cp app/build/outputs/apk/release/app-release.apk app-release.apk
+#   artifacts:
+#     paths:
+#       - app/build/outputs/
